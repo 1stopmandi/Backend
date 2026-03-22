@@ -1,0 +1,23 @@
+{
+  "name": "1stopmandi-backend",
+  "version": "1.0.0",
+  "description": "1StopMandi B2B food supply platform - Backend API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node src/db/seed.js",
+    "promote-admin": "node src/scripts/promote-admin.js"
+  },
+  "keywords": ["1stopmandi", "b2b", "food"],
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-async-errors": "^3.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0"
+  }
+}
