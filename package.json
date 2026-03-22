@@ -8,7 +8,8 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/db/migrate.js",
     "seed": "node src/db/seed.js",
-    "promote-admin": "node src/scripts/promote-admin.js"
+    "promote-admin": "node src/scripts/promote-admin.js",
+    "update-pricing": "node scripts/update-pricing.js"
   },
   "keywords": ["1stopmandi", "b2b", "food"],
   "license": "ISC",

@@ -6,13 +6,13 @@ function getFileUrl(file) {
 }
 
 async function getStatus(req, res) {
-  const status = await setupService.getStatus(req.user.id);
-  if (!status) {
+  const data = await setupService.getStatus(req.user.id);
+  if (!data) {
     const err = new Error('User not found');
     err.status = 404;
     throw err;
   }
-  res.json({ success: true, ...status });
+  res.json({ success: true, data });
 }
 
 async function step1(req, res) {

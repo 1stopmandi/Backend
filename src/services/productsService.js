@@ -1,37 +1,50 @@
 const { query } = require('../db');
+const pricingService = require('./pricingService');
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-function toProductResponse(row) {
+async function buildProductDto(row, cityId, qty) {
+  const category = row.category_id
+    ? { id: row.category_id, name: row.category_name }
+    : null;
+  const pricing = await pricingService.getProductPricingForApi(
+    row.id,
+    qty,
+    cityId || null
+  );
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
-    category_id: row.category_id,
-    category_name: row.category_name,
     unit: row.unit,
-    price_per_unit: parseFloat(row.price_per_unit),
+    image_url: row.image_url,
     moq: parseFloat(row.moq),
     stock: parseFloat(row.stock ?? 0),
-    image_url: row.image_url,
-    city_id: row.city_id,
     is_active: row.is_active,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    category,
+    pricing,
   };
 }
 
-async function list({ categoryId, cityId, page = 1, limit = DEFAULT_LIMIT } = {}) {
+async function list({
+  categoryId,
+  cityId,
+  search,
+  qty,
+  page = 1,
+  limit = DEFAULT_LIMIT,
+} = {}) {
   const offset = (Math.max(1, page) - 1) * limit;
   const actualLimit = Math.min(Math.max(1, limit), MAX_LIMIT);
+  const qtyNum = qty != null && !Number.isNaN(parseFloat(qty)) ? parseFloat(qty) : 1;
 
   let sql = `
     SELECT p.id, p.name, p.slug, p.category_id, c.name AS category_name,
-           p.unit, p.price_per_unit, p.moq, p.stock, p.image_url, p.city_id,
-           p.is_active, p.created_at, p.updated_at
+           p.unit, p.moq, p.stock, p.image_url, p.city_id, p.is_active,
+           p.created_at, p.updated_at
     FROM products p
-    JOIN categories c ON p.category_id = c.id
+    LEFT JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = true
   `;
   const params = [];
@@ -47,7 +60,16 @@ async function list({ categoryId, cityId, page = 1, limit = DEFAULT_LIMIT } = {}
     params.push(cityId);
   }
 
-  let countSql = 'SELECT COUNT(*)::int AS count FROM products p WHERE p.is_active = true';
+  if (search && String(search).trim()) {
+    sql += ` AND (p.name ILIKE $${paramIndex} OR p.slug ILIKE $${paramIndex})`;
+    params.push(`%${String(search).trim()}%`);
+    paramIndex += 1;
+  }
+
+  let countSql = `
+    SELECT COUNT(*)::int AS count FROM products p
+    WHERE p.is_active = true
+  `;
   const countParams = [];
   let ci = 1;
   if (categoryId) {
@@ -55,9 +77,14 @@ async function list({ categoryId, cityId, page = 1, limit = DEFAULT_LIMIT } = {}
     countParams.push(categoryId);
   }
   if (cityId) {
-    countSql += ` AND (p.city_id = $${ci} OR p.city_id IS NULL)`;
+    countSql += ` AND (p.city_id = $${ci++} OR p.city_id IS NULL)`;
     countParams.push(cityId);
   }
+  if (search && String(search).trim()) {
+    countSql += ` AND (p.name ILIKE $${ci} OR p.slug ILIKE $${ci})`;
+    countParams.push(`%${String(search).trim()}%`);
+  }
+
   const { rows: countRows } = await query(countSql, countParams);
   const total = parseInt(countRows[0]?.count ?? 0, 10);
 
@@ -66,8 +93,13 @@ async function list({ categoryId, cityId, page = 1, limit = DEFAULT_LIMIT } = {}
 
   const { rows } = await query(sql, params);
 
+  const data = [];
+  for (const row of rows) {
+    data.push(await buildProductDto(row, cityId, qtyNum));
+  }
+
   return {
-    data: rows.map(toProductResponse),
+    data,
     pagination: {
       page: Math.floor(offset / actualLimit) + 1,
       limit: actualLimit,
@@ -77,17 +109,19 @@ async function list({ categoryId, cityId, page = 1, limit = DEFAULT_LIMIT } = {}
   };
 }
 
-async function getById(id) {
+async function getById(id, cityId, qty) {
+  const qtyNum = qty != null && !Number.isNaN(parseFloat(qty)) ? parseFloat(qty) : 1;
   const { rows } = await query(
     `SELECT p.id, p.name, p.slug, p.category_id, c.name AS category_name,
-            p.unit, p.price_per_unit, p.moq, p.stock, p.image_url, p.city_id,
+            p.unit, p.moq, p.stock, p.image_url, p.city_id,
             p.is_active, p.created_at, p.updated_at
      FROM products p
-     JOIN categories c ON p.category_id = c.id
+     LEFT JOIN categories c ON p.category_id = c.id
      WHERE p.id = $1 AND p.is_active = true`,
     [id]
   );
-  return rows.length > 0 ? toProductResponse(rows[0]) : null;
+  if (rows.length === 0) return null;
+  return buildProductDto(rows[0], cityId, qtyNum);
 }
 
 module.exports = { list, getById };

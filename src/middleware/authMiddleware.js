@@ -13,7 +13,7 @@ async function authMiddleware(req, res, next) {
   try {
     const decoded = verify(token);
     const { rows } = await query(
-      'SELECT id, phone, name, role, is_setup_completed FROM users WHERE id = $1',
+      'SELECT id, phone, name, role, is_setup_completed, city_id FROM users WHERE id = $1',
       [decoded.userId]
     );
     if (rows.length === 0) {

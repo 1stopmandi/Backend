@@ -1,5 +1,6 @@
 const { pool, query } = require('../db');
 const cartService = require('./cartService');
+const pricingService = require('./pricingService');
 
 async function create(userId, imageUrl) {
   const { rows } = await query(
@@ -50,25 +51,45 @@ async function getById(id, userId) {
   };
 
   if (order.status === 'ready') {
+    const { rows: urows } = await query(
+      'SELECT city_id FROM users WHERE id = $1',
+      [order.user_id]
+    );
+    const cityId = urows[0]?.city_id ?? null;
+
     const { rows: itemRows } = await query(
       `SELECT uoi.id, uoi.product_id, uoi.quantity,
-              p.name AS product_name, p.unit, p.price_per_unit, p.moq, p.stock
+              p.name AS product_name, p.unit, p.moq, p.stock
        FROM uploaded_order_items uoi
        JOIN products p ON uoi.product_id = p.id
        WHERE uoi.uploaded_order_id = $1 AND p.is_active = true`,
       [id]
     );
-    result.items = itemRows.map((r) => ({
-      id: r.id,
-      product_id: r.product_id,
-      product_name: r.product_name,
-      unit: r.unit,
-      quantity: parseFloat(r.quantity),
-      price_per_unit: parseFloat(r.price_per_unit),
-      moq: parseFloat(r.moq),
-      stock: parseFloat(r.stock ?? 0),
-      line_total: Math.round(parseFloat(r.price_per_unit) * parseFloat(r.quantity) * 100) / 100,
-    }));
+
+    for (const r of itemRows) {
+      const qty = parseFloat(r.quantity);
+      const pricing = await pricingService.getProductPricingForApi(
+        r.product_id,
+        qty,
+        cityId
+      );
+      const unit = pricing.is_available ? pricing.display_price : null;
+      result.items.push({
+        id: r.id,
+        product_id: r.product_id,
+        product_name: r.product_name,
+        unit: r.unit,
+        quantity: qty,
+        price_per_unit: unit,
+        pricing_available: pricing.is_available,
+        moq: parseFloat(r.moq),
+        stock: parseFloat(r.stock ?? 0),
+        line_total:
+          unit != null
+            ? pricingService.roundMoney(unit * qty)
+            : null,
+      });
+    }
   }
 
   return result;
@@ -93,15 +114,13 @@ async function addToCart(id, userId) {
   for (const item of order.items) {
     try {
       await cartService.addItem(userId, item.product_id, item.quantity);
-    } catch (e) {
-      // Skip discontinued/out-of-stock
+    } catch {
+      // Skip
     }
   }
 
   return cartService.getCart(userId);
 }
-
-// --- Admin methods ---
 
 async function listByStatus(status) {
   const { rows } = await query(

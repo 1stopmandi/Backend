@@ -15,6 +15,8 @@ const savedListsRoutes = require('./routes/savedListsRoutes');
 const uploadedOrdersRoutes = require('./routes/uploadedOrdersRoutes');
 const adminUploadedOrdersRoutes = require('./routes/adminUploadedOrdersRoutes');
 const adminUsersRoutes = require('./routes/adminUsersRoutes');
+const adminPricingRoutes = require('./routes/adminPricingRoutes');
+const adminOrdersRoutes = require('./routes/adminOrdersRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,6 +41,8 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/saved-lists', savedListsRoutes);
 app.use('/api/uploaded-orders', uploadedOrdersRoutes);
 app.use('/api/admin/uploaded-orders', adminUploadedOrdersRoutes);
+app.use('/api/admin', adminPricingRoutes);
+app.use('/api/admin', adminOrdersRoutes);
 app.use('/api/admin', adminUsersRoutes);
 
 app.use(errorHandler);

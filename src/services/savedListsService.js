@@ -1,5 +1,6 @@
 const { query } = require('../db');
 const cartService = require('./cartService');
+const pricingService = require('./pricingService');
 
 async function list(userId) {
   const { rows } = await query(
@@ -42,24 +43,34 @@ async function getById(listId, userId) {
 
   const { rows: itemRows } = await query(
     `SELECT sli.id, sli.product_id, sli.default_quantity,
-            p.name AS product_name, p.unit, p.price_per_unit, p.moq, p.stock, p.image_url
+            p.name AS product_name, p.unit, p.moq, p.stock, p.image_url
      FROM saved_list_items sli
      JOIN products p ON sli.product_id = p.id
      WHERE sli.saved_list_id = $1 AND p.is_active = true`,
     [listId]
   );
 
-  const items = itemRows.map((r) => ({
-    id: r.id,
-    product_id: r.product_id,
-    product_name: r.product_name,
-    unit: r.unit,
-    default_quantity: parseFloat(r.default_quantity),
-    price_per_unit: parseFloat(r.price_per_unit),
-    moq: parseFloat(r.moq),
-    stock: parseFloat(r.stock ?? 0),
-    image_url: r.image_url,
-  }));
+  const { rows: urows } = await query('SELECT city_id FROM users WHERE id = $1', [userId]);
+  const cityId = urows[0]?.city_id ?? null;
+
+  const items = [];
+  for (const r of itemRows) {
+    const qty = parseFloat(r.default_quantity);
+    const pricing = await pricingService.getProductPricingForApi(r.product_id, qty, cityId);
+    const displayPrice = pricing.is_available ? pricing.display_price : null;
+    items.push({
+      id: r.id,
+      product_id: r.product_id,
+      product_name: r.product_name,
+      unit: r.unit,
+      default_quantity: qty,
+      price_per_unit: displayPrice,
+      pricing_available: pricing.is_available,
+      moq: parseFloat(r.moq),
+      stock: parseFloat(r.stock ?? 0),
+      image_url: r.image_url,
+    });
+  }
 
   return {
     ...listRows[0],
@@ -133,8 +144,8 @@ async function orderAll(listId, userId, { merge = false } = {}) {
   for (const item of list.items) {
     try {
       await cartService.addItem(userId, item.product_id, item.default_quantity);
-    } catch (e) {
-      // Skip discontinued/out-of-stock
+    } catch {
+      // Skip discontinued/out-of-stock/unpriced
     }
   }
 

@@ -1,5 +1,5 @@
 /**
- * Run seed data (cities, categories)
+ * Run seed data (cities, categories, products + pricing)
  * Usage: node src/db/seed.js
  * Run after: npm run migrate
  */
@@ -8,7 +8,6 @@ const { query } = require('./index');
 
 async function seed() {
   try {
-    // Cities
     await query(`
       INSERT INTO cities (name, slug, is_active)
       VALUES ('Patna', 'patna', true)
@@ -16,7 +15,6 @@ async function seed() {
     `);
     console.log('Seeded cities');
 
-    // Categories (global)
     const categories = [
       ['Vegetables', 'vegetables', 1],
       ['Fruits', 'fruits', 2],
@@ -31,15 +29,14 @@ async function seed() {
     for (const [name, slug, sortOrder] of categories) {
       await query(`
         INSERT INTO categories (name, slug, sort_order, city_id)
-        SELECT $1, $2, $3, NULL
+        SELECT $1::varchar(100), $2::varchar(50), $3::int, NULL::uuid
         WHERE NOT EXISTS (
-          SELECT 1 FROM categories WHERE slug = $2 AND city_id IS NULL
+          SELECT 1 FROM categories c WHERE c.slug = $2::varchar(50) AND c.city_id IS NULL
         )
       `, [name, slug, sortOrder]);
     }
     console.log('Seeded categories');
 
-    // Sample products (get category ids by slug)
     const { rows: cats } = await query(
       'SELECT id, slug FROM categories WHERE city_id IS NULL'
     );
@@ -58,16 +55,42 @@ async function seed() {
       ['Red Chilli Powder', 'red-chilli-powder', 'spices', 'kg', 250, 0.5, 40],
     ];
 
-    for (const [name, slug, catSlug, unit, price, moq, stock] of products) {
+    for (const [name, slug, catSlug, unit, basePrice, moq, stock] of products) {
       const catId = catBySlug[catSlug];
       if (!catId) continue;
-      await query(`
-        INSERT INTO products (name, slug, category_id, unit, price_per_unit, moq, stock)
-        SELECT $1, $2, $3, $4, $5, $6, $7
-        WHERE NOT EXISTS (SELECT 1 FROM products WHERE slug = $2 AND city_id IS NULL)
-      `, [name, slug, catId, unit, price, moq, stock]);
+
+      const { rows: existing } = await query(
+        'SELECT id FROM products WHERE slug = $1 AND city_id IS NULL',
+        [slug]
+      );
+
+      let productId;
+      if (existing.length > 0) {
+        productId = existing[0].id;
+      } else {
+        const ins = await query(
+          `INSERT INTO products (name, slug, category_id, unit, moq, stock)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id`,
+          [name, slug, catId, unit, moq, stock]
+        );
+        productId = ins.rows[0].id;
+      }
+
+      const { rows: hasPricing } = await query(
+        `SELECT 1 FROM product_pricing
+         WHERE product_id = $1 AND valid_to IS NULL AND city_id IS NULL`,
+        [productId]
+      );
+      if (hasPricing.length === 0) {
+        await query(
+          `INSERT INTO product_pricing (product_id, city_id, is_active, base_price, valid_from, valid_to)
+           VALUES ($1, NULL, true, $2, now(), NULL)`,
+          [productId, basePrice]
+        );
+      }
     }
-    console.log('Seeded products');
+    console.log('Seeded products + pricing');
 
     console.log('Seed complete.');
   } catch (err) {
