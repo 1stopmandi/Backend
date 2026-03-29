@@ -17,4 +17,16 @@ async function getById(req, res) {
   res.json({ success: true, data });
 }
 
-module.exports = { list, getById };
+async function getZonesByCity(req, res) {
+  const { cityId } = req.params;
+  const zones = await citiesService.getZonesByCityId(cityId);
+  res.json({ success: true, data: zones });
+}
+
+async function resolveByPincode(req, res) {
+  const { pincode } = req.body;
+  const result = await citiesService.resolvePincodeToCity(pincode);
+  res.json({ success: true, ...result });
+}
+
+module.exports = { list, getById, getZonesByCity, resolveByPincode };
