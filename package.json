@@ -11,7 +11,11 @@
     "promote-admin": "node src/scripts/promote-admin.js",
     "update-pricing": "node scripts/update-pricing.js"
   },
-  "keywords": ["1stopmandi", "b2b", "food"],
+  "keywords": [
+    "1stopmandi",
+    "b2b",
+    "food"
+  ],
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
@@ -19,6 +23,7 @@
     "express": "^4.21.0",
     "express-async-errors": "^3.1.1",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
     "pg": "^8.12.0"
   }
 }

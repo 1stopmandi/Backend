@@ -10,5 +10,6 @@ router.post('/verify-otp', authController.verifyOtp);
 router.get('/me', authMiddleware, authController.getMe);
 router.post('/logout', authMiddleware, authController.logout);
 router.patch('/me', authMiddleware, authController.updateMe);
+router.post('/refresh-token', authMiddleware, authController.refreshAccessToken);
 
 module.exports = router;
