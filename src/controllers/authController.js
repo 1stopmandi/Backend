@@ -44,10 +44,19 @@ async function updateMe(req, res) {
   });
 }
 
+async function refreshAccessToken(req, res) {
+  const token = await authService.refreshAccessToken(req.user);
+  res.json({
+    success: true,
+    token,
+  });
+}
+
 module.exports = {
   sendOtp,
   verifyOtp,
   getMe,
   logout,
   updateMe,
+  refreshAccessToken,
 };

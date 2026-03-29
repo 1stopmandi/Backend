@@ -92,6 +92,33 @@ async function getMe(userId) {
   return toUserResponse(rows[0]);
 }
 
+async function refreshAccessToken(user) {
+  if (!user || !user.userId) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+
+  // Fetch the latest user data to ensure we have current role info
+  const { rows } = await query(
+    'SELECT id, phone, name, role, is_setup_completed FROM users WHERE id = $1',
+    [user.userId]
+  );
+
+  if (rows.length === 0) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+
+  const userData = rows[0];
+  return sign({
+    userId: userData.id,
+    phone: userData.phone,
+    role: userData.role,
+  });
+}
+
 async function updateMe(userId, { name }) {
   const updates = [];
   const values = [];
