@@ -45,7 +45,11 @@ async function updateMe(req, res) {
 }
 
 async function refreshAccessToken(req, res) {
-  const token = await authService.refreshAccessToken(req.user);
+  const token = await authService.refreshAccessToken({
+    userId: req.user.id,
+    phone: req.user.phone,
+    role: req.user.role,
+  });
   res.json({
     success: true,
     token,

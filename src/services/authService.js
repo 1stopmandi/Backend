@@ -155,4 +155,5 @@ module.exports = {
   verifyOtp,
   getMe,
   updateMe,
+  refreshAccessToken,
 };
