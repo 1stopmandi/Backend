@@ -92,6 +92,16 @@ async function seed() {
     }
     console.log('Seeded products + pricing');
 
+    // Seed delivery zones and pincode mappings
+    const fs = require('fs');
+    const path = require('path');
+    const seedZonesSql = fs.readFileSync(
+      path.join(__dirname, 'seeds', 'delivery-zones.sql'),
+      'utf8'
+    );
+    await query(seedZonesSql);
+    console.log('Seeded delivery zones + pincode mappings');
+
     console.log('Seed complete.');
   } catch (err) {
     console.error('Seed failed:', err);
