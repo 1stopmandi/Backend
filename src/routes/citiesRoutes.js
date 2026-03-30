@@ -11,11 +11,6 @@ router.get('/:cityId/zones', citiesController.getZonesByCity);
 router.get('/:id', citiesController.getById);
 
 // Admin POST routes (with auth middleware)
-router.post(
-  '/resolve',
-  optionalAuth,
-  adminOrPricingKey,
-  citiesController.resolveByPincode
-);
+router.post('/resolve', optionalAuth, adminOrPricingKey, citiesController.resolveByPincode);
 
 module.exports = router;
