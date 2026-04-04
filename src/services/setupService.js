@@ -16,35 +16,35 @@ async function getStatus(userId) {
     [userId]
   );
   if (rows.length === 0) return null;
-  const user = rows[0];
+  const u = rows[0];
 
-  if (user.is_setup_completed) {
-    return {
-      is_setup_completed: true,
-      step: null,
-      missing_fields: [],
-    };
+  if (u.is_setup_completed) {
+    return { is_setup_completed: true, current_step: null, next_action: null };
   }
 
-  const stepNum = user.setup_step != null ? Number(user.setup_step) : 0;
-  if (stepNum >= 2) {
+  const step = Number(u.setup_step ?? 0);
+
+  if (step === 0) {
     return {
       is_setup_completed: false,
-      step: 2,
-      missing_fields: [],
+      current_step: 0,
+      next_action: 'complete_step1',   // frontend knows to show step1 form
     };
   }
-  if (stepNum >= 1) {
+
+  if (step === 1) {
     return {
       is_setup_completed: false,
-      step: 2,
-      missing_fields: [],
+      current_step: 1,
+      next_action: 'complete_step2',   // frontend knows to show step2 form
     };
   }
+
+  // step >= 2 means both steps done, just needs /complete called
   return {
     is_setup_completed: false,
-    step: 1,
-    missing_fields: [],
+    current_step: 2,
+    next_action: 'call_complete',      // frontend calls POST /setup/complete
   };
 }
 
