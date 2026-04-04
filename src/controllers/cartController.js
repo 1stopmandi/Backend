@@ -27,4 +27,24 @@ async function clearCart(req, res) {
   res.json({ success: true, data: cart });
 }
 
-module.exports = { getCart, addItem, removeItem, clearCart };
+async function updateItem(req, res) {
+  const { productId } = req.params;
+  const { quantity } = req.body;
+
+  if (quantity === undefined || quantity === null) {
+    const err = new Error('quantity is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const cart = await cartService.updateItem(req.user.id, productId, quantity);
+  res.json({ success: true, data: cart });
+}
+
+async function validateCart(req, res) {
+  const result = await cartService.validateCart(req.user.id);
+  // always 200 — the payload tells the frontend what's wrong
+  res.json({ success: true, data: result });
+}
+
+module.exports = { getCart, addItem, removeItem, clearCart, updateItem, validateCart };
