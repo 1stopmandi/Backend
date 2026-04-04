@@ -69,6 +69,28 @@ async function orderAll(req, res) {
   res.json({ success: true, data: cart });
 }
 
+async function rename(req, res) {
+  const { id } = req.params;
+  const { name } = req.body;
+  const data = await savedListsService.rename(id, req.user.id, { name });
+  if (!data) {
+    const err = new Error('List not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, data });
+}
+
+async function deleteList(req, res) {
+  const deleted = await savedListsService.deleteList(req.params.id, req.user.id);
+  if (!deleted) {
+    const err = new Error('List not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, message: 'List deleted' });
+}
+
 module.exports = {
   list,
   create,
@@ -77,4 +99,6 @@ module.exports = {
   updateItem,
   removeItem,
   orderAll,
+  rename,
+  deleteList
 };

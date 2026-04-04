@@ -152,6 +152,30 @@ async function orderAll(listId, userId, { merge = false } = {}) {
   return cartService.getCart(userId);
 }
 
+async function rename(listId, userId, { name }) {
+  if (!name || !name.trim()) {
+    const err = new Error('name is required');
+    err.status = 400;
+    throw err;
+  }
+  const { rows } = await query(
+    `UPDATE saved_lists SET name = $1, updated_at = now()
+     WHERE id = $2 AND user_id = $3
+     RETURNING id, name, created_at, updated_at`,
+    [name.trim(), listId, userId]
+  );
+  if (rows.length === 0) return null;
+  return rows[0];
+}
+
+async function deleteList(listId, userId) {
+  const { rowCount } = await query(
+    'DELETE FROM saved_lists WHERE id = $1 AND user_id = $2',
+    [listId, userId]
+  );
+  return rowCount > 0;   // cascade deletes all saved_list_items automatically
+}
+
 module.exports = {
   list,
   create,
@@ -160,4 +184,6 @@ module.exports = {
   updateItem,
   removeItem,
   orderAll,
+  rename,
+  deleteList
 };
