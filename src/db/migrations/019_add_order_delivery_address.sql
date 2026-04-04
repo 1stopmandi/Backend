@@ -1,0 +1,3 @@
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_pincode VARCHAR(10);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_city_id UUID REFERENCES cities(id);
