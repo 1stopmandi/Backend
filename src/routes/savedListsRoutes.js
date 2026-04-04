@@ -11,6 +11,8 @@ router.use(setupGuard);
 router.get('/', savedListsController.list);
 router.post('/', savedListsController.create);
 router.get('/:id', savedListsController.getById);
+router.patch('/:id', savedListsController.rename);
+router.delete('/:id', savedListsController.deleteList);
 router.post('/:id/items', savedListsController.addItem);
 router.patch('/:id/items/:itemId', savedListsController.updateItem);
 router.delete('/:id/items/:itemId', savedListsController.removeItem);
