@@ -42,4 +42,48 @@ async function getById(req, res) {
   res.json({ success: true, data: order });
 }
 
-module.exports = { create, list, getById, getLast, addLastToCart };
+// --- new handlers ---
+
+async function cancel(req, res) {
+  const order = await ordersService.cancelOrder(req.params.id, req.user.id);
+  if (!order) {
+    const err = new Error('Order not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, data: order });
+}
+
+async function reorder(req, res) {
+  const cart = await ordersService.reorderById(req.params.id, req.user.id);
+  res.json({ success: true, data: cart });
+}
+
+async function track(req, res) {
+  const result = await ordersService.getTracking(req.params.id, req.user.id);
+  if (!result) {
+    const err = new Error('Order not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, data: result });
+}
+
+async function invoice(req, res) {
+  const { stream, filename } = await ordersService.generateInvoice(
+    req.params.id,
+    req.user.id
+  );
+  if (!stream) {
+    const err = new Error('Order not found');
+    err.status = 404;
+    throw err;
+  }
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  stream.pipe(res);
+}
+
+module.exports = {
+  create, list, getById, getLast, addLastToCart, cancel, reorder, track, invoice,
+};
