@@ -95,11 +95,11 @@ async function getById(id, userId) {
   return result;
 }
 
-async function addToCart(id, userId) {
+async function addToCart(id, userId, { merge = false } = {}) {
   const order = await getById(id, userId);
   if (!order) return null;
   if (order.status !== 'ready') {
-    const err = new Error('Order is not ready yet. Please wait for processing.');
+    const err = new Error('Order is not ready yet');
     err.status = 400;
     throw err;
   }
@@ -109,14 +109,14 @@ async function addToCart(id, userId) {
     throw err;
   }
 
-  await cartService.clearCart(userId);
+  if (!merge) {
+    await cartService.clearCart(userId);   // only clear if not merging
+  }
 
   for (const item of order.items) {
     try {
       await cartService.addItem(userId, item.product_id, item.quantity);
-    } catch {
-      // Skip
-    }
+    } catch { /* skip */ }
   }
 
   return cartService.getCart(userId);
@@ -192,11 +192,35 @@ async function markRejected(id, adminUserId, { notes }) {
   return res.rowCount > 0;
 }
 
+// service
+async function deleteUpload(id, userId) {
+  // only allow delete if not in 'processing' state
+  // — can't delete while admin is actively working on it
+  const { rows } = await query(
+    'SELECT status FROM uploaded_orders WHERE id = $1 AND user_id = $2',
+    [id, userId]
+  );
+  if (rows.length === 0) return false;
+
+  if (rows[0].status === 'processing') {
+    const err = new Error('Cannot delete an upload while it is being processed');
+    err.status = 400;
+    throw err;
+  }
+
+  const { rowCount } = await query(
+    'DELETE FROM uploaded_orders WHERE id = $1 AND user_id = $2',
+    [id, userId]
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   create,
   listByUser,
   getById,
   addToCart,
+  deleteUpload,
   listByStatus,
   markReady,
   markRejected,
