@@ -3,6 +3,11 @@
  * Use after authMiddleware on cart/order routes.
  */
 function setupGuard(req, res, next) {
+  if (!req.user) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
   if (!req.user.is_setup_completed) {
     const err = new Error('Complete your outlet setup before placing orders');
     err.status = 403;
