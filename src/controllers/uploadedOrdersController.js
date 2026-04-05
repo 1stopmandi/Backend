@@ -6,12 +6,6 @@ function getImageUrl(file) {
 }
 
 async function create(req, res) {
-  // DEBUG
-  console.log('DEBUG - req.file:', req.file);
-  console.log('DEBUG - req.files:', req.files);
-  console.log('DEBUG - req.body:', req.body);
-  console.log('DEBUG - Content-Type:', req.headers['content-type']);
-  
   const imageUrl = getImageUrl(req.file) || req.body.image_url;
   if (!imageUrl) {
     const err = new Error('Image is required. Upload a file or provide image_url.');
@@ -82,10 +76,21 @@ async function deleteUpload(req, res) {
   res.json({ success: true, message: 'Upload deleted' });
 }
 
+async function getByIdAdmin(req, res) {
+  const data = await uploadedOrdersService.getByIdAdmin(req.params.id);
+  if (!data) {
+    const err = new Error('Upload not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, data });
+}
+
 module.exports = {
   create,
   list,
   getById,
+  getByIdAdmin,
   addToCart,
   deleteUpload,
   listPending,
