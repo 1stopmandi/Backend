@@ -6,6 +6,12 @@ function getImageUrl(file) {
 }
 
 async function create(req, res) {
+  // DEBUG
+  console.log('DEBUG - req.file:', req.file);
+  console.log('DEBUG - req.files:', req.files);
+  console.log('DEBUG - req.body:', req.body);
+  console.log('DEBUG - Content-Type:', req.headers['content-type']);
+  
   const imageUrl = getImageUrl(req.file) || req.body.image_url;
   if (!imageUrl) {
     const err = new Error('Image is required. Upload a file or provide image_url.');
@@ -34,7 +40,8 @@ async function getById(req, res) {
 
 async function addToCart(req, res) {
   const { id } = req.params;
-  const cart = await uploadedOrdersService.addToCart(id, req.user.id);
+  const merge = req.query.merge === 'true';   // add this
+  const cart = await uploadedOrdersService.addToCart(id, req.user.id, { merge });
   res.json({ success: true, data: cart });
 }
 
@@ -63,11 +70,24 @@ async function markRejected(req, res) {
   res.json({ success: true, message: 'Rejected' });
 }
 
+async function deleteUpload(req, res) {
+  const deleted = await uploadedOrdersService.deleteUpload(
+    req.params.id, req.user.id
+  );
+  if (!deleted) {
+    const err = new Error('Upload not found');
+    err.status = 404;
+    throw err;
+  }
+  res.json({ success: true, message: 'Upload deleted' });
+}
+
 module.exports = {
   create,
   list,
   getById,
   addToCart,
+  deleteUpload,
   listPending,
   markReady,
   markRejected,
