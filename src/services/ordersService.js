@@ -1,5 +1,6 @@
 const { pool, query } = require('../db');
 const cartService = require('./cartService');
+const inventoryService = require('./inventoryService');
 const pricingService = require('./pricingService');
 const PDFDocument = require('pdfkit');
 
@@ -175,6 +176,14 @@ async function createFromCart(userId, { saved_list_id, uploaded_order_id } = {})
 
     await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cartId]);
     await client.query('COMMIT');
+
+    // Release all stock reservations for this user (order confirmed)
+    try {
+      await inventoryService.releaseUserReservations(userId);
+    } catch (err) {
+      console.error('[Orders] Failed to release reservations:', err);
+      // Don't fail the order; reservations will auto-expire in 15 mins
+    }
 
     return getById(order.id, userId);
   } catch (err) {

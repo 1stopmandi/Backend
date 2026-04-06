@@ -17,6 +17,8 @@ const adminUploadedOrdersRoutes = require('./routes/adminUploadedOrdersRoutes');
 const adminUsersRoutes = require('./routes/adminUsersRoutes');
 const adminPricingRoutes = require('./routes/adminPricingRoutes');
 const adminOrdersRoutes = require('./routes/adminOrdersRoutes');
+const inventoryRoutes = require('./routes/inventoryRoutes');
+const { initializeCleanupCron } = require('./scripts/cleanup-expired-reservations');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,9 +46,12 @@ app.use('/api/admin/uploaded-orders', adminUploadedOrdersRoutes);
 app.use('/api/admin', adminPricingRoutes);
 app.use('/api/admin', adminOrdersRoutes);
 app.use('/api/admin', adminUsersRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`1StopMandi API running on http://localhost:${PORT}`);
+  // Initialize stock reservation cleanup cron job
+  initializeCleanupCron();
 });

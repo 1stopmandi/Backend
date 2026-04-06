@@ -1,5 +1,6 @@
 const { query } = require('../db');
 const pricingService = require('./pricingService');
+const inventoryService = require('./inventoryService');
 const { PricingUnavailableError } = require('./pricingService');
 
 async function getOrCreateCart(userId) {
@@ -27,7 +28,7 @@ async function getCart(userId) {
   const cityId = await getBuyerCityId(userId);
 
   const { rows: items } = await query(
-    `SELECT ci.id, ci.product_id, ci.quantity, ci.price_at_add,
+    `SELECT ci.id, ci.product_id, ci.quantity, ci.price_at_add, ci.reservation_id,
             p.name AS product_name, p.unit, p.moq, p.stock, p.image_url
      FROM cart_items ci
      JOIN products p ON ci.product_id = p.id
@@ -97,11 +98,6 @@ async function addItem(userId, productId, quantity) {
     err.status = 400;
     throw err;
   }
-  if (qty > stock) {
-    const err = new Error(`Only ${stock} available`);
-    err.status = 400;
-    throw err;
-  }
 
   const hasPricing = await pricingService.hasActivePricing(productId, cityId);
   if (!hasPricing) {
@@ -122,14 +118,20 @@ async function addItem(userId, productId, quantity) {
     throw e;
   }
 
+  // Reserve stock - this checks available (total - reserved) vs requested qty
+  // If item already in cart, this updates the existing reservation to new qty
+  const reservation = await inventoryService.reserveStock(productId, userId, qty);
+
+  // Insert or update cart item with the reservation
   await query(
-    `INSERT INTO cart_items (cart_id, product_id, quantity, price_at_add, added_at, updated_at)
-     VALUES ($1, $2, $3, $4, now(), now())
+    `INSERT INTO cart_items (cart_id, product_id, quantity, price_at_add, reservation_id, added_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now(), now())
      ON CONFLICT (cart_id, product_id) DO UPDATE SET
        quantity = $3,
        price_at_add = $4,
+       reservation_id = $5,
        updated_at = now()`,
-    [cartId, productId, qty, priceAtAdd]
+    [cartId, productId, qty, priceAtAdd, reservation.reservation_id]
   );
 
   return getCart(userId);
@@ -137,6 +139,17 @@ async function addItem(userId, productId, quantity) {
 
 async function removeItem(userId, productId) {
   const cartId = await getOrCreateCart(userId);
+
+  // Get the reservation_id before deleting
+  const { rows } = await query(
+    'SELECT reservation_id FROM cart_items WHERE cart_id = $1 AND product_id = $2',
+    [cartId, productId]
+  );
+
+  if (rows.length > 0 && rows[0].reservation_id) {
+    // Release the reservation
+    await inventoryService.releaseReservation(rows[0].reservation_id);
+  }
 
   await query(
     'DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2',
@@ -148,6 +161,10 @@ async function removeItem(userId, productId) {
 
 async function clearCart(userId) {
   const cartId = await getOrCreateCart(userId);
+
+  // Release all reservations for this user
+  await inventoryService.releaseUserReservations(userId);
+
   await query('DELETE FROM cart_items WHERE cart_id = $1', [cartId]);
   return {
     id: cartId,
@@ -192,15 +209,9 @@ async function updateItem(userId, productId, quantity) {
   }
 
   const moq   = parseFloat(productRows[0].moq);
-  const stock = parseFloat(productRows[0].stock ?? 0);
 
   if (qty < moq) {
     const err = new Error(`Minimum order quantity is ${moq}`);
-    err.status = 400;
-    throw err;
-  }
-  if (qty > stock) {
-    const err = new Error(`Only ${stock} units available`);
     err.status = 400;
     throw err;
   }
@@ -218,11 +229,14 @@ async function updateItem(userId, productId, quantity) {
     throw e;
   }
 
+  // Update reservation to new quantity (inventoryService handles upsert)
+  const reservation = await inventoryService.reserveStock(productId, userId, qty);
+
   await query(
     `UPDATE cart_items
-     SET quantity = $1, price_at_add = $2, updated_at = now()
-     WHERE cart_id = $3 AND product_id = $4`,
-    [qty, priceAtAdd, cartId, productId]
+     SET quantity = $1, price_at_add = $2, reservation_id = $3, updated_at = now()
+     WHERE cart_id = $4 AND product_id = $5`,
+    [qty, priceAtAdd, reservation.reservation_id, cartId, productId]
   );
 
   return getCart(userId);
@@ -234,7 +248,7 @@ async function validateCart(userId) {
 
   const { rows: items } = await query(
     `SELECT ci.product_id, ci.quantity, ci.price_at_add,
-            p.name, p.stock, p.moq, p.is_active
+            p.name, p.moq, p.is_active
      FROM cart_items ci
      JOIN products p ON ci.product_id = p.id
      WHERE ci.cart_id = $1`,
@@ -250,7 +264,6 @@ async function validateCart(userId) {
 
   for (const item of items) {
     const qty      = parseFloat(item.quantity);
-    const stock    = parseFloat(item.stock ?? 0);
     const moq      = parseFloat(item.moq);
     const itemIssues = [];
 
@@ -259,13 +272,21 @@ async function validateCart(userId) {
       itemIssues.push({ type: 'unavailable', message: 'Product is no longer available' });
     }
 
-    // check 2 — still in stock
-    if (item.is_active && qty > stock) {
-      itemIssues.push({
-        type: 'insufficient_stock',
-        message: `Only ${stock} units available, you have ${qty} in cart`,
-        available: stock,
-      });
+    // check 2 — check available stock (accounting for other reservations)
+    let available = 0;
+    if (item.is_active) {
+      try {
+        available = await inventoryService.getAvailableStock(item.product_id);
+        if (qty > available) {
+          itemIssues.push({
+            type: 'insufficient_stock',
+            message: `Only ${available} units available, you have ${qty} in cart`,
+            available: available,
+          });
+        }
+      } catch (e) {
+        itemIssues.push({ type: 'unavailable', message: 'Stock information unavailable' });
+      }
     }
 
     // check 3 — price changed since added to cart
