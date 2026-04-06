@@ -215,10 +215,70 @@ async function deleteUpload(id, userId) {
   return rowCount > 0;
 }
 
+async function getByIdAdmin(id) {
+  const { rows: orderRows } = await query(
+    `SELECT id, user_id, image_url, status, cart_ready_at, notes,
+            created_at, updated_at
+     FROM uploaded_orders WHERE id = $1`,
+    [id]   // no user_id filter
+  );
+  if (orderRows.length === 0) return null;
+
+  const order = orderRows[0];
+  const result = {
+    id:           order.id,
+    user_id:      order.user_id,
+    image_url:    order.image_url,
+    status:       order.status,
+    cart_ready_at: order.cart_ready_at,
+    notes:        order.notes,
+    created_at:   order.created_at,
+    updated_at:   order.updated_at,
+    items:        [],
+  };
+
+  // show items regardless of status for admin
+  const { rows: urows } = await query(
+    'SELECT city_id FROM users WHERE id = $1',
+    [order.user_id]
+  );
+  const cityId = urows[0]?.city_id ?? null;
+
+  const { rows: itemRows } = await query(
+    `SELECT uoi.id, uoi.product_id, uoi.quantity,
+            p.name AS product_name, p.unit, p.moq, p.stock
+     FROM uploaded_order_items uoi
+     JOIN products p ON uoi.product_id = p.id
+     WHERE uoi.uploaded_order_id = $1`,
+    [id]
+  );
+
+  for (const r of itemRows) {
+    const qty = parseFloat(r.quantity);
+    const pricing = await pricingService.getProductPricingForApi(
+      r.product_id, qty, cityId
+    );
+    result.items.push({
+      id:                r.id,
+      product_id:        r.product_id,
+      product_name:      r.product_name,
+      unit:              r.unit,
+      quantity:          qty,
+      price_per_unit:    pricing.is_available ? pricing.display_price : null,
+      pricing_available: pricing.is_available,
+      moq:               parseFloat(r.moq),
+      stock:             parseFloat(r.stock ?? 0),
+    });
+  }
+
+  return result;
+}
+
 module.exports = {
   create,
   listByUser,
   getById,
+  getByIdAdmin,
   addToCart,
   deleteUpload,
   listByStatus,

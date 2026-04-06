@@ -9,6 +9,7 @@ router.use(authMiddleware);
 router.use(requireAdmin);
 
 router.get('/', uploadedOrdersController.listPending);
+router.get('/:id', uploadedOrdersController.getByIdAdmin);
 router.patch('/:id/ready', uploadedOrdersController.markReady);
 router.patch('/:id/rejected', uploadedOrdersController.markRejected);
 
