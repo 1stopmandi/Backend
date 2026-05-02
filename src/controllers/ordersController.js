@@ -16,15 +16,31 @@ async function addLastToCart(req, res) {
 }
 
 async function create(req, res) {
-  const { saved_list_id, uploaded_order_id } = req.body;
+  const { saved_list_id, uploaded_order_id, provider_order_id } = req.body;
   const order = await ordersService.createFromCart(req.user.id, {
     saved_list_id,
     uploaded_order_id,
+    provider_order_id,
   });
   res.status(201).json({ success: true, data: order });
 }
 
 async function list(req, res) {
+  if (req.query.provider_order_id) {
+    const order = await ordersService.getOrderByProviderOrderId(
+      req.query.provider_order_id,
+      req.user.id
+    );
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    }
+    return res.status(200).json({ success: true, data: order });
+  }
+
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 20;
   const result = await ordersService.list(req.user.id, { page, limit });

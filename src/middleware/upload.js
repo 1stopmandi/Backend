@@ -42,5 +42,6 @@ const uploadFields = upload.fields([
 ]);
 
 const uploadOrderImage = upload.single('image');
+const uploadProductRequestImage = upload.single('image');
 
-module.exports = { upload, uploadFields, uploadOrderImage };
+module.exports = { upload, uploadFields, uploadOrderImage, uploadProductRequestImage };

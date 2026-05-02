@@ -118,14 +118,21 @@ async function releaseReservation(reservationId) {
 }
 
 /**
- * Release all reservations for a user (cleanup on order placement)
+ * Release all reservations for a user (cleanup on order placement).
+ * @param {string} userId
+ * @param {{ client?: import('pg').PoolClient }} [options] — pass `client` to participate in an outer transaction
  */
-async function releaseUserReservations(userId) {
-  const { rows } = await query(
-    `DELETE FROM stock_reservations WHERE user_id = $1 RETURNING id`,
-    [userId]
-  );
+async function releaseUserReservations(userId, options = {}) {
+  const executor = options.client;
+  const sql = `DELETE FROM stock_reservations WHERE user_id = $1 RETURNING id`;
+  const params = [userId];
 
+  if (executor && typeof executor.query === 'function') {
+    const { rows } = await executor.query(sql, params);
+    return rows.map((r) => r.id);
+  }
+
+  const { rows } = await query(sql, params);
   return rows.map((r) => r.id);
 }
 

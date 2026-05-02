@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const inventoryService = require('../services/inventoryService');
+const { sweepExpiredSessions } = require('../services/paymentsService');
 
 let cronJob = null;
 
@@ -17,6 +18,7 @@ function initializeCleanupCron() {
   cronJob = cron.schedule('*/5 * * * *', async () => {
     try {
       const deleted = await inventoryService.deleteExpiredReservations();
+      await sweepExpiredSessions();
       if (deleted > 0) {
         console.log(`[Inventory] Cleaned up ${deleted} expired stock reservation(s)`);
       }

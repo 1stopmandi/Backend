@@ -1,6 +1,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { authMiddleware } = require('../middleware/authMiddleware');
+const { upload } = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -10,6 +11,7 @@ router.post('/verify-otp', authController.verifyOtp);
 router.get('/me', authMiddleware, authController.getMe);
 router.post('/logout', authMiddleware, authController.logout);
 router.patch('/me', authMiddleware, authController.updateMe);
+router.post('/me/profile-image', authMiddleware, upload.single('outlet_image'), authController.updateProfileImage);
 router.post('/refresh-token', authMiddleware, authController.refreshAccessToken);
 
 module.exports = router;

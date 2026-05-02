@@ -2,6 +2,7 @@ const { pool, query } = require('../db');
 const cartService = require('./cartService');
 const inventoryService = require('./inventoryService');
 const pricingService = require('./pricingService');
+const paymentsService = require('./paymentsService');
 const PDFDocument = require('pdfkit');
 
 const STATUS_TRANSITIONS = {
@@ -13,7 +14,16 @@ const STATUS_TRANSITIONS = {
 };
 
 async function generateOrderNumber(client) {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  await client.query(
+    `SELECT pg_advisory_xact_lock(
+       88422,
+       hashtext(to_char(date_trunc('day', now()), 'YYYYMMDD'))
+     )`
+  );
+  const { rows: dr } = await client.query(
+    `SELECT to_char(date_trunc('day', now()), 'YYYYMMDD') AS ymd`
+  );
+  const date = dr[0].ymd;
   const { rows } = await client.query(
     `SELECT COUNT(*)::int AS n FROM orders
      WHERE created_at >= date_trunc('day', now())`
@@ -22,7 +32,43 @@ async function generateOrderNumber(client) {
   return `ORD-${date}-${String(seq).padStart(3, '0')}`;
 }
 
-async function createFromCart(userId, { saved_list_id, uploaded_order_id } = {}) {
+async function createFromCart(
+  userId,
+  { saved_list_id, uploaded_order_id, provider_order_id } = {}
+) {
+  const cashfreeEnabled =
+    String(process.env.CASHFREE_CLIENT_ID || '').trim() &&
+    String(process.env.CASHFREE_CLIENT_SECRET || '').trim();
+
+  if (cashfreeEnabled) {
+    if (!provider_order_id) {
+      const err = new Error(
+        'provider_order_id is required when payments are enabled'
+      );
+      err.status = 400;
+      err.code = 'PROVIDER_ORDER_ID_REQUIRED';
+      throw err;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { cfOrder, session } = await paymentsService.verifyPaidOrder(
+        provider_order_id,
+        userId
+      );
+      const fin = await paymentsService.finalizeFromSession(session, cfOrder, {
+        client,
+      });
+      await client.query('COMMIT');
+      return getById(fin.order.id, userId);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   let source = 'normal';
   let finalSavedListId = null;
   let finalUploadedOrderId = null;
@@ -81,60 +127,8 @@ async function createFromCart(userId, { saved_list_id, uploaded_order_id } = {})
       throw err;
     }
     const cartId = cartRows[0].id;
-
-    const { rows: itemRows } = await client.query(
-      `SELECT ci.product_id, ci.quantity, ci.price_at_add,
-              p.name AS product_name, p.unit
-       FROM cart_items ci
-       JOIN products p ON p.id = ci.product_id
-       WHERE ci.cart_id = $1`,
-      [cartId]
-    );
-
-    if (itemRows.length === 0) {
-      const err = new Error('Cart is empty');
-      err.status = 400;
-      throw err;
-    }
-
-    let priceChangedAtCheckout = false;
-    const linePayloads = [];
-
-    for (const row of itemRows) {
-      const qty = parseFloat(row.quantity);
-      const unitPrice = await pricingService.getPrice(
-        row.product_id,
-        qty,
-        userId,
-        cityId
-      );
-      const snapshot = await pricingService.getPricingSnapshot(
-        row.product_id,
-        cityId
-      );
-      const lineTotal = pricingService.roundMoney(unitPrice * qty);
-
-      if (row.price_at_add != null) {
-        const atAdd = parseFloat(row.price_at_add);
-        if (Math.abs(unitPrice - atAdd) > 0.01) {
-          priceChangedAtCheckout = true;
-        }
-      }
-
-      linePayloads.push({
-        product_id: row.product_id,
-        product_name: row.product_name,
-        unit: row.unit,
-        quantity: qty,
-        price_applied: unitPrice,
-        line_total: lineTotal,
-        pricing_slab_snapshot: JSON.stringify(snapshot),
-      });
-    }
-
-    const totalAmount = pricingService.roundMoney(
-      linePayloads.reduce((s, l) => s + l.line_total, 0)
-    );
+    const { items: linePayloads, totalAmount } = await paymentsService.priceCart(client, userId);
+    const priceChangedAtCheckout = false;
 
     const orderNumber = await generateOrderNumber(client);
     const { rows: orderRows } = await client.query(
@@ -195,6 +189,7 @@ async function createFromCart(userId, { saved_list_id, uploaded_order_id } = {})
 }
 
 function toOrderResponse(row) {
+  const pid = row.provider_order_id ?? null;
   return {
     id:                       row.id,
     order_number:             row.order_number,
@@ -204,9 +199,14 @@ function toOrderResponse(row) {
     uploaded_order_id:        row.uploaded_order_id        ?? null,
     total_amount:             parseFloat(row.total_amount  ?? 0),
     price_changed_at_checkout: row.price_changed_at_checkout === true,
-    delivery_address:         row.delivery_address         ?? null,   // new
-    delivery_pincode:         row.delivery_pincode         ?? null,   // new
-    delivery_city_id:         row.delivery_city_id         ?? null,   // new
+    delivery_address:         row.delivery_address         ?? null,
+    delivery_pincode:         row.delivery_pincode         ?? null,
+    delivery_city_id:         row.delivery_city_id         ?? null,
+    paymentProvider:          row.payment_provider         ?? null,
+    providerOrderId:          pid,
+    paymentIntentId:          pid,
+    paymentStatus:            row.payment_status           ?? 'unpaid',
+    paidAt:                   row.paid_at                  ?? null,
     created_at:               row.created_at,
     updated_at:               row.updated_at,
   };
@@ -243,7 +243,10 @@ async function list(userId, { page = 1, limit = 20 } = {}) {
 
   const { rows } = await query(
     `SELECT id, order_number, status, source, saved_list_id, uploaded_order_id,
-            total_amount, price_changed_at_checkout, created_at, updated_at
+            total_amount, price_changed_at_checkout,
+            delivery_address, delivery_pincode, delivery_city_id,
+            payment_provider, provider_order_id, payment_status, paid_at,
+            created_at, updated_at
      FROM orders
      WHERE user_id = $1
      ORDER BY created_at DESC
@@ -265,7 +268,10 @@ async function list(userId, { page = 1, limit = 20 } = {}) {
 async function getById(orderId, userId) {
   const { rows: orderRows } = await query(
     `SELECT id, order_number, status, source, saved_list_id, uploaded_order_id,
-            total_amount, price_changed_at_checkout, created_at, updated_at
+            total_amount, price_changed_at_checkout,
+            delivery_address, delivery_pincode, delivery_city_id,
+            payment_provider, provider_order_id, payment_status, paid_at,
+            created_at, updated_at
      FROM orders WHERE id = $1 AND user_id = $2`,
     [orderId, userId]
   );
@@ -559,11 +565,23 @@ async function generateInvoice(orderId, userId) {
   return { stream: doc, filename };
 }
 
+async function getOrderByProviderOrderId(providerOrderId, userId) {
+  const result = await pool.query(
+    `SELECT id FROM orders
+     WHERE provider_order_id = $1 AND user_id = $2
+     LIMIT 1`,
+    [providerOrderId, userId]
+  );
+  if (!result.rows[0]) return null;
+  return getById(result.rows[0].id, userId);
+}
+
 // update module.exports to include new functions
 module.exports = {
   createFromCart,
   list,
   getById,
+  getOrderByProviderOrderId,
   getLastOrder,
   addLastOrderToCart,
   updateStatusByAdmin,

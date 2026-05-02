@@ -36,12 +36,37 @@ async function logout(req, res) {
 }
 
 async function updateMe(req, res) {
-  const { name } = req.body;
-  const user = await authService.updateMe(req.user.id, { name });
+  const lockedFields = ['business_name', 'gst_number', 'fssai_number', 'outlet_type'];
+  for (const field of lockedFields) {
+    if (req.body?.[field] !== undefined) {
+      const err = new Error(`${field} cannot be changed from profile settings. Contact support.`);
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const user = await authService.updateMe(req.user.id, {
+    name: req.body?.name,
+    owner_name: req.body?.owner_name,
+    alternate_contact: req.body?.alternate_contact,
+    address: req.body?.address,
+    pincode: req.body?.pincode,
+    daily_order_volume: req.body?.daily_order_volume,
+  });
   res.json({
     success: true,
     user,
   });
+}
+
+async function updateProfileImage(req, res) {
+  if (!req.file?.filename) {
+    const err = new Error('outlet_image is required');
+    err.status = 400;
+    throw err;
+  }
+  const user = await authService.updateOutletImage(req.user.id, `/uploads/${req.file.filename}`);
+  res.json({ success: true, user });
 }
 
 async function refreshAccessToken(req, res) {
@@ -62,5 +87,6 @@ module.exports = {
   getMe,
   logout,
   updateMe,
+  updateProfileImage,
   refreshAccessToken,
 };

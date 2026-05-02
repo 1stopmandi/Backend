@@ -10,6 +10,17 @@ function toUserResponse(row) {
     name: row.name,
     role: row.role,
     is_setup_completed: row.is_setup_completed,
+    business_name: row.business_name ?? null,
+    owner_name: row.owner_name ?? null,
+    alternate_contact: row.alternate_contact ?? null,
+    address: row.address ?? null,
+    pincode: row.pincode ?? null,
+    city_id: row.city_id ?? null,
+    outlet_type: row.outlet_type ?? null,
+    daily_order_volume: row.daily_order_volume ?? null,
+    gst_number: row.gst_number ?? null,
+    fssai_number: row.fssai_number ?? null,
+    outlet_image_url: row.outlet_image_url ?? null,
   };
 }
 
@@ -51,7 +62,10 @@ async function verifyOtp(phone, otp) {
 
   // Find or create user
   let { rows } = await query(
-    'SELECT id, phone, name, role, is_setup_completed FROM users WHERE phone = $1',
+    `SELECT id, phone, name, role, is_setup_completed, business_name, owner_name,
+            alternate_contact, address, pincode, city_id, outlet_type,
+            daily_order_volume, gst_number, fssai_number, outlet_image_url
+     FROM users WHERE phone = $1`,
     [phoneNorm]
   );
 
@@ -59,7 +73,9 @@ async function verifyOtp(phone, otp) {
   if (rows.length === 0) {
     const insert = await query(
       `INSERT INTO users (phone) VALUES ($1)
-       RETURNING id, phone, name, role, is_setup_completed`,
+       RETURNING id, phone, name, role, is_setup_completed, business_name, owner_name,
+         alternate_contact, address, pincode, city_id, outlet_type,
+         daily_order_volume, gst_number, fssai_number, outlet_image_url`,
       [phoneNorm]
     );
     user = insert.rows[0];
@@ -81,7 +97,10 @@ async function verifyOtp(phone, otp) {
 
 async function getMe(userId) {
   const { rows } = await query(
-    'SELECT id, phone, name, role, is_setup_completed FROM users WHERE id = $1',
+    `SELECT id, phone, name, role, is_setup_completed, business_name, owner_name,
+            alternate_contact, address, pincode, city_id, outlet_type,
+            daily_order_volume, gst_number, fssai_number, outlet_image_url
+     FROM users WHERE id = $1`,
     [userId]
   );
   if (rows.length === 0) {
@@ -119,14 +138,46 @@ async function refreshAccessToken(user) {
   });
 }
 
-async function updateMe(userId, { name }) {
+async function updateMe(userId, {
+  name,
+  owner_name,
+  alternate_contact,
+  address,
+  pincode,
+  daily_order_volume,
+}) {
   const updates = [];
   const values = [];
   let i = 1;
 
   if (name !== undefined) {
     updates.push(`name = $${i++}`);
-    values.push(name);
+    values.push(name ? String(name).trim() : null);
+  }
+
+  if (owner_name !== undefined) {
+    updates.push(`owner_name = $${i++}`);
+    values.push(owner_name ? String(owner_name).trim() : null);
+  }
+
+  if (alternate_contact !== undefined) {
+    updates.push(`alternate_contact = $${i++}`);
+    values.push(alternate_contact ? String(alternate_contact).trim() : null);
+  }
+
+  if (address !== undefined) {
+    updates.push(`address = $${i++}`);
+    values.push(address ? String(address).trim() : null);
+  }
+
+  if (pincode !== undefined) {
+    updates.push(`pincode = $${i++}`);
+    values.push(pincode ? String(pincode).trim() : null);
+  }
+
+  if (daily_order_volume !== undefined) {
+    updates.push(`daily_order_volume = $${i++}`);
+    values.push(daily_order_volume ? String(daily_order_volume).trim() : null);
   }
 
   if (updates.length === 0) {
@@ -137,8 +188,30 @@ async function updateMe(userId, { name }) {
   const { rows } = await query(
     `UPDATE users SET ${updates.join(', ')}, updated_at = now()
      WHERE id = $${i}
-     RETURNING id, phone, name, role, is_setup_completed`,
+     RETURNING id, phone, name, role, is_setup_completed, business_name, owner_name,
+       alternate_contact, address, pincode, city_id, outlet_type,
+       daily_order_volume, gst_number, fssai_number, outlet_image_url`,
     values
+  );
+
+  if (rows.length === 0) {
+    const err = new Error('Unauthorized');
+    err.status = 401;
+    throw err;
+  }
+
+  return toUserResponse(rows[0]);
+}
+
+async function updateOutletImage(userId, outletImageUrl) {
+  const { rows } = await query(
+    `UPDATE users
+     SET outlet_image_url = $1, updated_at = now()
+     WHERE id = $2
+     RETURNING id, phone, name, role, is_setup_completed, business_name, owner_name,
+       alternate_contact, address, pincode, city_id, outlet_type,
+       daily_order_volume, gst_number, fssai_number, outlet_image_url`,
+    [outletImageUrl, userId]
   );
 
   if (rows.length === 0) {
@@ -155,5 +228,6 @@ module.exports = {
   verifyOtp,
   getMe,
   updateMe,
+  updateOutletImage,
   refreshAccessToken,
 };

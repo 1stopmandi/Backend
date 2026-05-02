@@ -126,3 +126,19 @@ UPDATE products SET search_vector = to_tsvector('english',
   coalesce(brand, '') || ' ' ||
   coalesce(description, '')
 );
+
+-- Fill sensible defaults for any newly-seeded products not explicitly listed above.
+UPDATE products
+SET
+  is_veg = COALESCE(is_veg, true),
+  brand = COALESCE(brand, '1StopMandi Select'),
+  description = COALESCE(description, name || ' sourced for daily B2B kitchen operations.'),
+  rating = COALESCE(rating, 4.2),
+  rating_count = COALESCE(rating_count, 30)
+WHERE city_id IS NULL;
+
+UPDATE products SET search_vector = to_tsvector('english',
+  coalesce(name, '') || ' ' ||
+  coalesce(brand, '') || ' ' ||
+  coalesce(description, '')
+);

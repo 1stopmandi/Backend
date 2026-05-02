@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  order_updates BOOLEAN NOT NULL DEFAULT TRUE,
+  billing_alerts BOOLEAN NOT NULL DEFAULT TRUE,
+  price_changes BOOLEAN NOT NULL DEFAULT TRUE,
+  announcements BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

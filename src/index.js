@@ -18,12 +18,22 @@ const adminUsersRoutes = require('./routes/adminUsersRoutes');
 const adminPricingRoutes = require('./routes/adminPricingRoutes');
 const adminOrdersRoutes = require('./routes/adminOrdersRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
+const paymentsRoutes = require('./routes/paymentsRoutes');
+const billingRoutes = require('./routes/billingRoutes');
+const notificationPrefsRoutes = require('./routes/notificationPrefsRoutes');
+const productRequestsRoutes = require('./routes/productRequestsRoutes');
 const { initializeCleanupCron } = require('./scripts/cleanup-expired-reservations');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+// ─────────────────────────────────────────────────────────────────────
+// ORDER MATTERS — /api/payments must be mounted BEFORE express.json()
+// because POST /api/payments/webhook needs a raw Buffer body for Cashfree
+// webhook signature verification. A startup assertion below enforces this.
+// ─────────────────────────────────────────────────────────────────────
+app.use('/api/payments', paymentsRoutes);
 app.use(express.json());
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
@@ -47,8 +57,22 @@ app.use('/api/admin', adminPricingRoutes);
 app.use('/api/admin', adminOrdersRoutes);
 app.use('/api/admin', adminUsersRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/account/notifications', notificationPrefsRoutes);
+app.use('/api/product-requests', productRequestsRoutes);
 
 app.use(errorHandler);
+
+// Startup assertion: verify /api/payments is mounted before the JSON parser.
+// This fails loudly at boot rather than silently at runtime.
+(() => {
+  const layers = app._router.stack;
+  const jsonIdx = layers.findIndex((l) => l.handle?.name === 'jsonParser');
+  const payIdx = layers.findIndex((l) => l.regexp?.toString().includes('payments'));
+  if (jsonIdx !== -1 && payIdx !== -1 && payIdx > jsonIdx) {
+    throw new Error('FATAL: /api/payments must be mounted before express.json(). See paymentsRoutes.js.');
+  }
+})();
 
 app.listen(PORT, () => {
   console.log(`1StopMandi API running on http://localhost:${PORT}`);
